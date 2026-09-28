@@ -106,13 +106,38 @@ final class WebViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         nowPlaying.cookies = webView.configuration.websiteDataStore.httpCookieStore
-        nowPlaying.onAction = { [weak self] action in self?.dispatch(action) }
+        // A lock-screen / headset press is the listener deciding: it overrides waiting out a call.
+        nowPlaying.onAction = { [weak self] action in
+            self?.audioFocus.handBack { self?.dispatch(action) }
+        }
         audioFocus.onAction = { [weak self] action in self?.dispatch(action) }
         audioFocus.onChange = { [weak self] in self?.nowPlaying.reassert() }
+        audioFocus.suspendMedia = { [weak self] on, done in
+            guard let self else { return done() }
+            self.webView.setAllMediaPlaybackSuspended(on) { done() }
+        }
         progressWatch = webView.observe(\.estimatedProgress) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.showProgress() } // KVO fires on the main thread
         }
-        webView.load(URLRequest(url: Config.radioURL))
+        loadFresh()
+    }
+
+    /// The page caches its own code (service worker) and runs an update only on the launch after it
+    /// was downloaded. A new build of this app often comes with page fixes it relies on, so its first
+    /// launch drops the cached page code (not sign-in or settings) and loads everything fresh.
+    private func loadFresh() {
+        let key = "pageCodeFreshFor"
+        let build = "\(Config.version).\(Config.build)"
+        guard UserDefaults.standard.string(forKey: key) != build else {
+            webView.load(URLRequest(url: Config.radioURL))
+            return
+        }
+        let code: Set<String> = [WKWebsiteDataTypeServiceWorkerRegistrations, WKWebsiteDataTypeFetchCache,
+                                 WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache]
+        webView.configuration.websiteDataStore.removeData(ofTypes: code, modifiedSince: .distantPast) { [weak self] in
+            UserDefaults.standard.set(build, forKey: key)
+            self?.webView.load(URLRequest(url: Config.radioURL))
+        }
     }
 
     /// A lock-screen / headset button, forwarded to the page.
