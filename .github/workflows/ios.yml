@@ -28,11 +28,20 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Build for the simulator (unsigned)
+      # An unsigned Kacheri.ipa for sideloading: Sideloadly / AltStore sign it with any Apple ID.
+      - name: Build Kacheri.ipa (unsigned)
         run: |
-          xcodebuild -project Kacheri.xcodeproj -scheme Kacheri -configuration Debug \
-            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO -quiet build
+          xcodebuild -project Kacheri.xcodeproj -scheme Kacheri -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" CODE_SIGNING_ALLOWED=NO -quiet build
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/Kacheri.app Payload/
+          zip -qry Kacheri.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kacheri-ipa
+          path: Kacheri.ipa
 
       - name: Archive and upload to TestFlight
         if: inputs.testflight
