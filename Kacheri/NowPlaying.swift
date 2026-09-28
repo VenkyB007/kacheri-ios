@@ -53,6 +53,13 @@ final class NowPlaying {
         apply()
     }
 
+    /// WebKit wipes the lock screen when the page's audio stops for a call or another app, and may
+    /// do it a moment after the page tells us what's on: put Kacheri back, now and once more later.
+    func reassert() {
+        apply()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.apply() }
+    }
+
     private func setUpCommands() {
         guard !commandsReady else { return }
         commandsReady = true

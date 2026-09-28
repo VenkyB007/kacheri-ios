@@ -4,7 +4,8 @@ import WebKit
 /// WKWebView shell around the Kacheri web app, plus what a web page can't do on its own: keep the
 /// music going in the pocket (background audio mode, AppDelegate), real lock-screen and headset
 /// buttons (NowPlaying), and Google sign-in, which Google refuses inside web views
-/// (SignInHandoff). The page reports what is playing through window.RideWaveApp.playback(json);
+/// (SignInHandoff), and pausing for calls / other apps / headphones out like a music app
+/// (AudioFocus). The page reports what is playing through window.RideWaveApp.playback(json);
 /// button presses come back through window.__rwNative(action) — the same bridge as Android.
 final class WebViewController: UIViewController {
 
@@ -13,6 +14,7 @@ final class WebViewController: UIViewController {
     private let offline = UIStackView()
     private var progressWatch: NSKeyValueObservation?
     private let nowPlaying = NowPlaying()
+    private let audioFocus = AudioFocus()
     private let signIn = SignInHandoff()
 
     /// window.RideWaveApp for the page (public/js/native.js). No update(): TestFlight / the App
@@ -105,6 +107,8 @@ final class WebViewController: UIViewController {
         super.viewDidLoad()
         nowPlaying.cookies = webView.configuration.websiteDataStore.httpCookieStore
         nowPlaying.onAction = { [weak self] action in self?.dispatch(action) }
+        audioFocus.onAction = { [weak self] action in self?.dispatch(action) }
+        audioFocus.onChange = { [weak self] in self?.nowPlaying.reassert() }
         progressWatch = webView.observe(\.estimatedProgress) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.showProgress() } // KVO fires on the main thread
         }
