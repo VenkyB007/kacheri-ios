@@ -16,8 +16,9 @@ import UIKit
 /// app, but a call interrupts it like any music app, and iOS wakes us when the call ends. CallKit's
 /// call observer tells us the same thing independently (ringing, dialling, hung up).
 ///
-/// While the sound belongs to a call, every media element in the web view is frozen
-/// (WKWebView.setAllMediaPlaybackSuspended): nothing on the page can play over the call.
+/// The page stays silent through the call by itself (keepalive.js holds everything). The shell
+/// does NOT freeze the web view's media (setAllMediaPlaybackSuspended): overlapping iOS's own call
+/// interruption, that left WebKit refusing every play() — even taps — until the app restarted.
 ///
 /// The page is told what's going on (window.__rwNative, public/js/native.js):
 ///   "interrupted"          a call (or Siri…) took the sound: pause, remember whether we were playing
@@ -30,12 +31,8 @@ final class AudioFocus {
     var onAction: ((String) -> Void)?
     /// After the sound was taken or came back: put Kacheri back on the lock screen (WebKit clears it).
     var onChange: (() -> Void)?
-    /// Freeze (true) / thaw (false) all media in the web view, then call the completion.
-    var suspendMedia: ((Bool, @escaping () -> Void) -> Void)?
-
     /// The sound was taken while we had it: give the music back once the phone is quiet again.
     private var waiting = false
-    private var suspended = false
     private var quietTimer: Timer?
     private var quietChecks = 0
     private var watchedFor = 0
@@ -61,13 +58,9 @@ final class AudioFocus {
             let reason = n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
             MainActor.assumeIsolated { self?.routeChanged(reason) }
         })
-        // Opened again: the page's own buttons must work (a tap on play has to make sound). If we
-        // were waiting for a call to end, we still resume when it does.
+        // Opened again: a call may have ended while we were suspended.
         observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.callsChanged() // a call may have ended while we were suspended
-                if self?.onCall == false { self?.thaw() }
-            }
+            MainActor.assumeIsolated { self?.callsChanged() }
         })
         // The media server restarted (rare): everything audio is gone with it.
         observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
@@ -99,12 +92,12 @@ final class AudioFocus {
         }
     }
 
-    /// A lock-screen / headset button was pressed: the listener decides now. Thaw, then do it.
+    /// A lock-screen / headset button was pressed: the listener decides now.
     func handBack(then action: @escaping () -> Void) {
         waiting = false
         stopWatching()
         endTask()
-        if suspended { setSuspended(false, then: action) } else { action() }
+        action()
     }
 
     // ───────── the anchor: our own audio session, so a call interrupts *us* ─────────
@@ -190,7 +183,6 @@ final class AudioFocus {
     private func takenAway() {
         waiting = true
         stopWatching()
-        setSuspended(true)
         onAction?("interrupted")
         onChange?()
     }
@@ -233,27 +225,13 @@ final class AudioFocus {
         guard waiting else { endTask(); return }
         waiting = false
         note("resume")
-        startAnchor() // the call interrupted it too
-        setSuspended(false) { [weak self] in
-            guard let self else { return }
-            self.onAction?("resume-interrupted")
-            self.onChange?()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
-                MainActor.assumeIsolated { self?.endTask() }
-            }
+        // The page first; the anchor restarts once the page reports it's playing (pageState).
+        pagePlaying = false
+        onAction?("resume-interrupted")
+        onChange?()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            MainActor.assumeIsolated { self?.endTask() }
         }
-    }
-
-    /// Back in the app: let the page's buttons work. Doesn't start anything by itself.
-    private func thaw() {
-        guard suspended else { return }
-        setSuspended(false)
-    }
-
-    private func setSuspended(_ on: Bool, then done: (() -> Void)? = nil) {
-        suspended = on
-        guard let suspendMedia else { done?(); return }
-        suspendMedia(on) { done?() }
     }
 
     private func beginTask() {

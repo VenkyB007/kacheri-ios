@@ -113,10 +113,6 @@ final class WebViewController: UIViewController {
         audioFocus.onAction = { [weak self] action in self?.dispatch(action) }
         nowPlaying.onPlaying = { [weak self] playing in self?.audioFocus.pageState(playing: playing) }
         audioFocus.onChange = { [weak self] in self?.nowPlaying.reassert() }
-        audioFocus.suspendMedia = { [weak self] on, done in
-            guard let self else { return done() }
-            self.webView.setAllMediaPlaybackSuspended(on) { done() }
-        }
         progressWatch = webView.observe(\.estimatedProgress) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.showProgress() } // KVO fires on the main thread
         }
