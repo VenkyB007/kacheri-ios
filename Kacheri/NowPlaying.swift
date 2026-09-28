@@ -33,6 +33,8 @@ final class NowPlaying {
 
     /// "play" | "pause" | "toggle" | "next" | "prev", for window.__rwNative.
     var onAction: ((String) -> Void)?
+    /// Whether the page says music is playing, on every report.
+    var onPlaying: ((Bool) -> Void)?
     /// The web view's cookies: the art proxy sits behind sign-in.
     var cookies: WKHTTPCookieStore?
 
@@ -44,6 +46,7 @@ final class NowPlaying {
     func update(json: String) {
         guard let s = State(json: json) else { return }
         state = s
+        onPlaying?(s.playing)
         if s.art != artURL {
             artURL = s.art
             artwork = nil

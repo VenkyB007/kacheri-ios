@@ -1,20 +1,29 @@
 import AVFoundation
+import CallKit
 import UIKit
 
-/// What a music app does when iOS takes the sound away. An incoming call, Siri, an alarm or another
-/// app's audio (an Instagram reel, YouTube…) pauses Kacheri at once, and Kacheri then waits in the
-/// background, silent, until that other sound is over, and only then carries on by itself.
+/// What a music app does when iOS takes the sound away. An incoming or outgoing call, Siri, an alarm:
+/// Kacheri pauses at once, waits in the background, and carries on by itself once the call is over.
 /// Headphones out, AirPods out of the ears or a Bluetooth headset gone: pause, rather than carry on
-/// from the phone's speaker.
+/// from the phone's speaker. (Another app's sound — an Instagram reel — the page handles itself:
+/// WebKit pauses our song, and keepalive.js / native.js hold everything until the sound is free.)
 ///
-/// The shell doesn't trust the page to stay quiet: while the sound belongs to someone else, every
-/// media element in the web view is frozen (WKWebView.setAllMediaPlaybackSuspended), so nothing on
-/// the page — whatever version of its code is running — can start playing over the call or the reel.
+/// Why the shell needs its own audio: WKWebView plays from WebKit's own process, and it is *that*
+/// process iOS interrupts. When a call has paused it, iOS suspends it, and at the end of the call
+/// there is nobody awake to resume — so the music never comes back. Spotify gets woken because its
+/// audio session was the one interrupted. So while Kacheri plays, the shell keeps an audio session of
+/// its own open with a silent loop ("the anchor"). It mixes with others, so it never stops another
+/// app, but a call interrupts it like any music app, and iOS wakes us when the call ends. CallKit's
+/// call observer tells us the same thing independently (ringing, dialling, hung up).
+///
+/// While the sound belongs to a call, every media element in the web view is frozen
+/// (WKWebView.setAllMediaPlaybackSuspended): nothing on the page can play over the call.
 ///
 /// The page is told what's going on (window.__rwNative, public/js/native.js):
-///   "interrupted"          the phone took the sound: pause, remember whether we were playing
-///   "resume-interrupted"   the other sound is over: play on if we were playing
+///   "interrupted"          a call (or Siri…) took the sound: pause, remember whether we were playing
+///   "resume-interrupted"   it's over and the phone is quiet: play on if we were playing
 ///   "unplugged"            the headphones went away: pause
+///   "log:…"                notes for the page's audio log
 @MainActor
 final class AudioFocus {
 
@@ -33,6 +42,15 @@ final class AudioFocus {
     private var task: UIBackgroundTaskIdentifier = .invalid
     private var observers: [NSObjectProtocol] = []
 
+    private let calls = CXCallObserver()
+    private var callWatch: CallWatch?
+    private var onCall = false
+
+    private var anchor: AVAudioPlayer?
+    private var pagePlaying = false
+    private var lastPlayingAt = Date.distantPast
+    private var anchorStop: DispatchWorkItem?
+
     init() {
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] n in
@@ -46,12 +64,39 @@ final class AudioFocus {
         // Opened again: the page's own buttons must work (a tap on play has to make sound). If we
         // were waiting for a call to end, we still resume when it does.
         observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.thaw() }
+            MainActor.assumeIsolated {
+                self?.callsChanged() // a call may have ended while we were suspended
+                if self?.onCall == false { self?.thaw() }
+            }
         })
-        // The media server restarted (rare): the category is gone with it.
-        observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { _ in
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+        // The media server restarted (rare): everything audio is gone with it.
+        observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.anchor = nil
+                if self?.pagePlaying == true { self?.startAnchor() }
+            }
         })
+        let watch = CallWatch { [weak self] in MainActor.assumeIsolated { self?.callsChanged() } }
+        callWatch = watch
+        calls.setDelegate(watch, queue: nil) // nil: the main queue
+    }
+
+    /// What the page last said (window.RideWaveApp.playback): the anchor runs while music plays.
+    func pageState(playing: Bool) {
+        if playing { lastPlayingAt = Date() }
+        guard playing != pagePlaying else { return }
+        pagePlaying = playing
+        anchorStop?.cancel()
+        anchorStop = nil
+        if playing {
+            startAnchor()
+        } else if !waiting {
+            // Paused by the listener: keep the anchor a while (lock screen / headset play still
+            // works instantly), then let the phone rest.
+            let stop = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.stopAnchor() } }
+            anchorStop = stop
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20 * 60, execute: stop)
+        }
     }
 
     /// A lock-screen / headset button was pressed: the listener decides now. Thaw, then do it.
@@ -62,6 +107,64 @@ final class AudioFocus {
         if suspended { setSuspended(false, then: action) } else { action() }
     }
 
+    // ───────── the anchor: our own audio session, so a call interrupts *us* ─────────
+
+    private func startAnchor() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            // Mixes with others: it never stops another app, and never Kacheri's own music.
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+        } catch {
+            note("anchor-session-failed \(error.localizedDescription)")
+        }
+        if anchor == nil {
+            anchor = try? AVAudioPlayer(data: Self.silence)
+            anchor?.numberOfLoops = -1
+            anchor?.prepareToPlay()
+        }
+        if anchor?.isPlaying == false {
+            let ok = anchor?.play() ?? false
+            note("anchor-play \(ok)")
+        }
+    }
+
+    private func stopAnchor() {
+        guard let anchor, anchor.isPlaying else { return }
+        anchor.stop()
+        try? AVAudioSession.sharedInstance().setActive(false, options: [])
+        note("anchor-stop")
+    }
+
+    /// One second of 16-bit mono silence as a WAV file.
+    private static let silence: Data = {
+        let rate: UInt32 = 8000, bytes = rate * 2
+        var d = Data()
+        func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
+        func u16(_ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
+        d.append(contentsOf: Array("RIFF".utf8)); u32(36 + bytes); d.append(contentsOf: Array("WAVE".utf8))
+        d.append(contentsOf: Array("fmt ".utf8)); u32(16); u16(1); u16(1); u32(rate); u32(rate * 2); u16(2); u16(16)
+        d.append(contentsOf: Array("data".utf8)); u32(bytes)
+        d.append(Data(count: Int(bytes)))
+        return d
+    }()
+
+    // ───────── calls ─────────
+
+    private func callsChanged() {
+        let now = calls.calls.contains { !$0.hasEnded }
+        guard now != onCall else { return }
+        onCall = now
+        note(now ? "call-started" : "call-ended")
+        if now {
+            // Only if Kacheri was playing (or was, a moment ago: the ring may have paused it first).
+            guard pagePlaying || Date().timeIntervalSince(lastPlayingAt) < 5 || waiting else { return }
+            takenAway()
+        } else if waiting {
+            watchForQuiet()
+        }
+    }
+
     private func interruption(_ info: [AnyHashable: Any]?) {
         guard let info, let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
@@ -70,21 +173,29 @@ final class AudioFocus {
             // "You were suspended" arrives late, when the app comes back: old news, not a call.
             if let r = info[AVAudioSessionInterruptionReasonKey] as? UInt,
                AVAudioSession.InterruptionReason(rawValue: r) == .appWasSuspended { return }
-            waiting = true
-            stopWatching()
-            setSuspended(true)
-            onAction?("interrupted")
-            onChange?()
+            note("interruption-began")
+            guard pagePlaying || Date().timeIntervalSince(lastPlayingAt) < 5 || waiting else { return }
+            takenAway()
         case .ended:
-            // The other side let go of the sound — but a reel may still be running (apps flip their
-            // audio session on and off). Resume only once the phone is actually quiet.
-            if waiting { watchForQuiet() }
+            let options = AVAudioSession.InterruptionOptions(rawValue: info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)
+            note("interruption-ended resume=\(options.contains(.shouldResume)) onCall=\(onCall)")
+            callsChanged()
+            // Still on a call (a second one, or on hold): keep waiting. Otherwise, once it's quiet.
+            if waiting && !onCall { watchForQuiet() }
         @unknown default:
             break
         }
     }
 
-    // ───────── waiting for the other sound to finish ─────────
+    private func takenAway() {
+        waiting = true
+        stopWatching()
+        setSuspended(true)
+        onAction?("interrupted")
+        onChange?()
+    }
+
+    // ───────── waiting for the phone to be quiet ─────────
 
     private func watchForQuiet() {
         beginTask() // a few seconds of background time to look, even with the screen locked
@@ -99,15 +210,15 @@ final class AudioFocus {
     private func checkQuiet() {
         let session = AVAudioSession.sharedInstance()
         let othersPlaying = session.isOtherAudioPlaying || session.secondaryAudioShouldBeSilencedHint
-        quietChecks = othersPlaying ? 0 : quietChecks + 1
+        quietChecks = (othersPlaying || onCall) ? 0 : quietChecks + 1
         watchedFor += 1
         if quietChecks >= 3 { // quiet for a good second: it's over
             stopWatching()
             resume()
         } else if watchedFor >= 50 {
-            // Still busy after ~25 s. iOS won't let us keep watching from the background; we stay
-            // paused (frozen), and the next "sound is free" from iOS, the lock screen's play button
-            // or opening the app picks it up.
+            // Still busy after ~25 s: stay paused (frozen). The next "call ended", the lock
+            // screen's play button or opening the app picks it up.
+            note("still-busy")
             stopWatching()
             endTask()
         }
@@ -121,7 +232,8 @@ final class AudioFocus {
     private func resume() {
         guard waiting else { endTask(); return }
         waiting = false
-        try? AVAudioSession.sharedInstance().setActive(true)
+        note("resume")
+        startAnchor() // the call interrupted it too
         setSuspended(false) { [weak self] in
             guard let self else { return }
             self.onAction?("resume-interrupted")
@@ -162,6 +274,18 @@ final class AudioFocus {
 
     private func routeChanged(_ reason: UInt?) {
         guard let reason, AVAudioSession.RouteChangeReason(rawValue: reason) == .oldDeviceUnavailable else { return }
+        note("unplugged")
         onAction?("unplugged")
     }
+
+    private func note(_ s: String) {
+        onAction?("log:\(s)")
+    }
+}
+
+/// CXCallObserverDelegate has to be an NSObject; this one just says "something changed".
+private final class CallWatch: NSObject, CXCallObserverDelegate {
+    private let changed: () -> Void
+    init(_ changed: @escaping () -> Void) { self.changed = changed }
+    func callObserver(_ callObserver: CXCallObserver, callChanged call: CXCall) { changed() }
 }

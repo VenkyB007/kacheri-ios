@@ -111,6 +111,7 @@ final class WebViewController: UIViewController {
             self?.audioFocus.handBack { self?.dispatch(action) }
         }
         audioFocus.onAction = { [weak self] action in self?.dispatch(action) }
+        nowPlaying.onPlaying = { [weak self] playing in self?.audioFocus.pageState(playing: playing) }
         audioFocus.onChange = { [weak self] in self?.nowPlaying.reassert() }
         audioFocus.suspendMedia = { [weak self] on, done in
             guard let self else { return done() }
