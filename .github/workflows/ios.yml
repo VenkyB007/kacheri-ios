@@ -1,0 +1,70 @@
+# Builds Kacheri for iOS on a GitHub-hosted Mac (no Mac needed locally).
+#   Every push:      compile for the simulator, unsigned — catches build breaks.
+#   Run workflow →   tick "testflight" to archive, sign and upload to TestFlight.
+# Secrets for TestFlight (repo → Settings → Secrets and variables → Actions):
+#   APPLE_TEAM_ID    10-character team ID (developer.apple.com → Membership)
+#   ASC_KEY_ID       App Store Connect API key ID     (Users and Access → Integrations → Keys,
+#   ASC_ISSUER_ID    its issuer ID                     role "Admin" so Xcode may create the
+#   ASC_KEY_P8       the .p8 file's full contents      distribution certificate and profile)
+name: iOS
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      testflight:
+        description: Upload this build to TestFlight
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build for the simulator (unsigned)
+        run: |
+          xcodebuild -project Kacheri.xcodeproj -scheme Kacheri -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO -quiet build
+
+      - name: Archive and upload to TestFlight
+        if: inputs.testflight
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          KEY="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY"
+                -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+
+          # The build number must grow with every upload: the run number does.
+          xcodebuild -project Kacheri.xcodeproj -scheme Kacheri -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Kacheri.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            "${AUTH[@]}" -quiet archive
+
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict></plist>
+          PLIST
+
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Kacheri.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
+            "${AUTH[@]}"
+          rm -f "$KEY"
