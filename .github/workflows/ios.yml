@@ -1,5 +1,5 @@
 # Builds Kacheri for iOS on a GitHub-hosted Mac (no Mac needed locally).
-#   Every push:      compile for the simulator, unsigned — catches build breaks.
+#   Every push:      an unsigned Kacheri.ipa (Actions → the run → Artifacts) for sideloading.
 #   Run workflow →   tick "testflight" to archive, sign and upload to TestFlight.
 # Secrets for TestFlight (repo → Settings → Secrets and variables → Actions):
 #   APPLE_TEAM_ID    10-character team ID (developer.apple.com → Membership)
