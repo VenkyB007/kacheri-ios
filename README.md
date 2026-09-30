@@ -1,7 +1,7 @@
 # Beam iOS
 
-iPhone shell around the Beam web app (formerly Kacheri) (repo `D:\apps\ridewave`) at `https://beam.nikolatesla.co.in`.
-It is the iOS counterpart of `ridewave-android` and uses the same page bridge, plus what a web page can't do by itself:
+iPhone shell around the Beam web app (formerly Kacheri) (repo `D:\apps\beam`) at `https://beam.nikolatesla.co.in`.
+It is the iOS counterpart of `beam-android` and uses the same page bridge, plus what a web page can't do by itself:
 
 - **Plays in the background like a real music app.** `UIBackgroundModes: audio` and an
   `AVAudioSession` in `.playback` keep the web view's `<audio>` going with the screen locked.
@@ -53,5 +53,5 @@ Bump `MARKETING_VERSION` in `project.yml` for each release. The build number is 
 
 ## Icon
 
-`node tools/make-icons.js --ios D:\apps\ridewave-ios` (in the ridewave repo) renders
+`node tools/make-icons.js --ios D:\apps\beam-ios` (in the beam repo) renders
 `AppIcon.appiconset/icon-1024.png` from `design/icon.svg`. The file is opaque because App Store Connect rejects icons with alpha.

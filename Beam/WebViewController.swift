@@ -20,13 +20,23 @@ final class WebViewController: UIViewController {
     /// window.RideWaveApp for the page (public/js/native.js). No update(): TestFlight / the App
     /// Store update this app, so the page never offers the APK here.
     private static let bridgeScript = """
-    window.RideWaveApp = {
+    window.RideWaveApp = Object.assign(window.RideWaveApp || {}, {
       playback: function (json) { window.webkit.messageHandlers.rideWave.postMessage(String(json)); },
       versionCode: function () { return \(Config.build); }
+    });
+    """
+
+    /// window.RideWaveApp.bars(color, light): the page's look (public/js/theme.js), so the status bar
+    /// and the edges around the page match it, with dark status-bar text on a light look.
+    private static let barsScript = """
+    window.RideWaveApp = window.RideWaveApp || {};
+    window.RideWaveApp.bars = function (color, light) {
+      window.webkit.messageHandlers.rideWaveBars.postMessage(JSON.stringify({ color: String(color), light: !!light }));
     };
     """
 
-    override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
+    private var lightPage = false
+    override var preferredStatusBarStyle: UIStatusBarStyle { lightPage ? .darkContent : .lightContent }
 
     override func loadView() {
         let config = WKWebViewConfiguration()
@@ -35,6 +45,8 @@ final class WebViewController: UIViewController {
         config.mediaTypesRequiringUserActionForPlayback = []
         // The page detects the shell (and its version) from this suffix.
         config.applicationNameForUserAgent = "Mobile/15E148 RideWaveIOS/\(Config.version)"
+        config.userContentController.add(WeakScriptHandler(self), name: "rideWaveBars")
+        config.userContentController.addUserScript(WKUserScript(source: Self.barsScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         if Config.nativeNowPlaying {
             config.userContentController.add(WeakScriptHandler(self), name: "rideWave")
             config.userContentController.addUserScript(WKUserScript(source: Self.bridgeScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -62,7 +74,7 @@ final class WebViewController: UIViewController {
             root.addSubview(v)
         }
 
-        progress.progressTintColor = UIColor(red: 0x8E / 255.0, green: 0xF0 / 255.0, blue: 0xDA / 255.0, alpha: 1)
+        progress.progressTintColor = Config.accent
         progress.trackTintColor = .clear
         progress.isHidden = true
 
@@ -73,7 +85,7 @@ final class WebViewController: UIViewController {
         let body = UILabel()
         body.text = "Check your internet connection, or the radio may be offline."
         body.font = .preferredFont(forTextStyle: .subheadline)
-        body.textColor = UIColor(red: 0xC3 / 255.0, green: 0xC8 / 255.0, blue: 0xE6 / 255.0, alpha: 1)
+        body.textColor = UIColor(red: 0xA2 / 255.0, green: 0xA2 / 255.0, blue: 0xAD / 255.0, alpha: 1)
         body.numberOfLines = 0
         body.textAlignment = .center
         let retry = UIButton(type: .system)
@@ -244,7 +256,20 @@ extension WebViewController: WKScriptMessageHandler {
         guard message.frameInfo.isMainFrame, origin.protocol == "https",
               let url = URL(string: "https://\(origin.host)"), Self.isInApp(url),
               let json = message.body as? String else { return }
-        nowPlaying.update(json: json)
+        if message.name == "rideWaveBars" { applyBars(json: json) } else { nowPlaying.update(json: json) }
+    }
+
+    /// {color: "#rrggbb", light}: the page switched looks.
+    private func applyBars(json: String) {
+        guard let obj = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
+              let hex = obj["color"] as? String, hex.count == 7, hex.hasPrefix("#"),
+              let rgb = UInt32(hex.dropFirst(), radix: 16) else { return }
+        let color = UIColor(red: CGFloat(rgb >> 16 & 0xFF) / 255, green: CGFloat(rgb >> 8 & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+        view.backgroundColor = color
+        webView.backgroundColor = color
+        webView.scrollView.backgroundColor = color
+        lightPage = obj["light"] as? Bool ?? false
+        setNeedsStatusBarAppearanceUpdate()
     }
 }
 

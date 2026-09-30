@@ -25,7 +25,10 @@ enum Config {
     /// already does this and the two fight over the lock screen, turn it off.
     static let nativeNowPlaying = true
 
-    static let background = UIColor(red: 0x0F / 255.0, green: 0x13 / 255.0, blue: 0x22 / 255.0, alpha: 1)
+    /// Holo, the default look, until the page reports its own (WebViewController.applyBars).
+    static let background = UIColor(red: 0x08 / 255.0, green: 0x08 / 255.0, blue: 0x0B / 255.0, alpha: 1)
+    /// Beam's headlamp amber.
+    static let accent = UIColor(red: 0xFF / 255.0, green: 0xB5 / 255.0, blue: 0x47 / 255.0, alpha: 1)
 
     static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0" }
     static var build: Int { Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0 }
