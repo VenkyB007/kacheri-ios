@@ -1,5 +1,5 @@
-# Builds Kacheri for iOS on a GitHub-hosted Mac (no Mac needed locally).
-#   Every push:      an unsigned Kacheri.ipa (Actions → the run → Artifacts) for sideloading.
+# Builds Beam for iOS on a GitHub-hosted Mac (no Mac needed locally).
+#   Every push:      an unsigned Beam.ipa (Actions → the run → Artifacts) for sideloading.
 #   Run workflow →   tick "testflight" to archive, sign and upload to TestFlight.
 # Secrets for TestFlight (repo → Settings → Secrets and variables → Actions):
 #   APPLE_TEAM_ID    10-character team ID (developer.apple.com → Membership)
@@ -28,20 +28,20 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      # An unsigned Kacheri.ipa for sideloading: Sideloadly / AltStore sign it with any Apple ID.
-      - name: Build Kacheri.ipa (unsigned)
+      # An unsigned Beam.ipa for sideloading: Sideloadly / AltStore sign it with any Apple ID.
+      - name: Build Beam.ipa (unsigned)
         run: |
-          xcodebuild -project Kacheri.xcodeproj -scheme Kacheri -configuration Release \
+          xcodebuild -project Beam.xcodeproj -scheme Beam -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" CODE_SIGNING_ALLOWED=NO -quiet build
           mkdir Payload
-          cp -R build/Build/Products/Release-iphoneos/Kacheri.app Payload/
-          zip -qry Kacheri.ipa Payload
+          cp -R build/Build/Products/Release-iphoneos/Beam.app Payload/
+          zip -qry Beam.ipa Payload
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Kacheri-ipa
-          path: Kacheri.ipa
+          name: Beam-ipa
+          path: Beam.ipa
 
       - name: Archive and upload to TestFlight
         if: inputs.testflight
@@ -57,8 +57,8 @@ jobs:
                 -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
 
           # The build number must grow with every upload: the run number does.
-          xcodebuild -project Kacheri.xcodeproj -scheme Kacheri -configuration Release \
-            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Kacheri.xcarchive" \
+          xcodebuild -project Beam.xcodeproj -scheme Beam -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Beam.xcarchive" \
             DEVELOPMENT_TEAM="$TEAM_ID" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             "${AUTH[@]}" -quiet archive
 
@@ -73,7 +73,7 @@ jobs:
           </dict></plist>
           PLIST
 
-          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Kacheri.xcarchive" \
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Beam.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
             "${AUTH[@]}"
           rm -f "$KEY"

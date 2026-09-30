@@ -1,7 +1,7 @@
 import UIKit
 import WebKit
 
-/// WKWebView shell around the Kacheri web app, plus what a web page can't do on its own: keep the
+/// WKWebView shell around the Beam web app, plus what a web page can't do on its own: keep the
 /// music going in the pocket (background audio mode, AppDelegate), real lock-screen and headset
 /// buttons (NowPlaying), and Google sign-in, which Google refuses inside web views
 /// (SignInHandoff), and pausing for calls / other apps / headphones out like a music app
@@ -67,7 +67,7 @@ final class WebViewController: UIViewController {
         progress.isHidden = true
 
         let title = UILabel()
-        title.text = "Kacheri is unreachable"
+        title.text = "Beam is unreachable"
         title.font = .preferredFont(forTextStyle: .headline)
         title.textColor = .white
         let body = UILabel()
@@ -126,14 +126,14 @@ final class WebViewController: UIViewController {
         let key = "pageCodeFreshFor"
         let build = "\(Config.version).\(Config.build)"
         guard UserDefaults.standard.string(forKey: key) != build else {
-            webView.load(URLRequest(url: Config.radioURL))
+            webView.load(URLRequest(url: Config.startURL))
             return
         }
         let code: Set<String> = [WKWebsiteDataTypeServiceWorkerRegistrations, WKWebsiteDataTypeFetchCache,
                                  WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache]
         webView.configuration.websiteDataStore.removeData(ofTypes: code, modifiedSince: .distantPast) { [weak self] in
             UserDefaults.standard.set(build, forKey: key)
-            self?.webView.load(URLRequest(url: Config.radioURL))
+            self?.webView.load(URLRequest(url: Config.startURL))
         }
     }
 

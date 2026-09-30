@@ -6,7 +6,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // .playback (with UIBackgroundModes=audio): the web view's music keeps going with the
         // screen locked and ignores the silent switch, like a music app. Not activated here, so
-        // opening Kacheri doesn't stop whatever else was playing until Kacheri itself plays.
+        // opening Beam doesn't stop whatever else was playing until Beam itself plays.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         return true
     }

@@ -3,7 +3,7 @@ import CallKit
 import UIKit
 
 /// What a music app does when iOS takes the sound away. An incoming or outgoing call, Siri, an alarm:
-/// Kacheri pauses at once, waits in the background, and carries on by itself once the call is over.
+/// Beam pauses at once, waits in the background, and carries on by itself once the call is over.
 /// Headphones out, AirPods out of the ears or a Bluetooth headset gone: pause, rather than carry on
 /// from the phone's speaker. (Another app's sound — an Instagram reel — the page handles itself:
 /// WebKit pauses our song, and keepalive.js / native.js hold everything until the sound is free.)
@@ -11,7 +11,7 @@ import UIKit
 /// Why the shell needs its own audio: WKWebView plays from WebKit's own process, and it is *that*
 /// process iOS interrupts. When a call has paused it, iOS suspends it, and at the end of the call
 /// there is nobody awake to resume — so the music never comes back. Spotify gets woken because its
-/// audio session was the one interrupted. So while Kacheri plays, the shell keeps an audio session of
+/// audio session was the one interrupted. So while Beam plays, the shell keeps an audio session of
 /// its own open with a silent loop ("the anchor"). It mixes with others, so it never stops another
 /// app, but a call interrupts it like any music app, and iOS wakes us when the call ends. CallKit's
 /// call observer tells us the same thing independently (ringing, dialling, hung up).
@@ -29,7 +29,7 @@ import UIKit
 final class AudioFocus {
 
     var onAction: ((String) -> Void)?
-    /// After the sound was taken or came back: put Kacheri back on the lock screen (WebKit clears it).
+    /// After the sound was taken or came back: put Beam back on the lock screen (WebKit clears it).
     var onChange: (() -> Void)?
     /// The sound was taken while we had it: give the music back once the phone is quiet again.
     private var waiting = false
@@ -105,7 +105,7 @@ final class AudioFocus {
     private func startAnchor() {
         let session = AVAudioSession.sharedInstance()
         do {
-            // Mixes with others: it never stops another app, and never Kacheri's own music.
+            // Mixes with others: it never stops another app, and never Beam's own music.
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
         } catch {
@@ -150,7 +150,7 @@ final class AudioFocus {
         onCall = now
         note(now ? "call-started" : "call-ended")
         if now {
-            // Only if Kacheri was playing (or was, a moment ago: the ring may have paused it first).
+            // Only if Beam was playing (or was, a moment ago: the ring may have paused it first).
             guard pagePlaying || Date().timeIntervalSince(lastPlayingAt) < 5 || waiting else { return }
             takenAway()
         } else if waiting {
@@ -236,7 +236,7 @@ final class AudioFocus {
 
     private func beginTask() {
         guard task == .invalid else { return }
-        task = UIApplication.shared.beginBackgroundTask(withName: "Kacheri waits for quiet") { [weak self] in
+        task = UIApplication.shared.beginBackgroundTask(withName: "Beam waits for quiet") { [weak self] in
             MainActor.assumeIsolated {
                 self?.stopWatching()
                 self?.endTask()

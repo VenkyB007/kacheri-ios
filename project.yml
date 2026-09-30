@@ -1,28 +1,28 @@
-# XcodeGen spec: `xcodegen generate` turns this into Kacheri.xcodeproj (not checked in).
+# XcodeGen spec: `xcodegen generate` turns this into Beam.xcodeproj (not checked in).
 # Bump MARKETING_VERSION for a release; CI sets the build number from the run number.
-name: Kacheri
+name: Beam
 options:
   deploymentTarget:
     iOS: "16.0"
   createIntermediateGroups: true
 settings:
   base:
-    MARKETING_VERSION: "1.4"
+    MARKETING_VERSION: "1.5"
     CURRENT_PROJECT_VERSION: "1"
     # Your Apple Developer team ID (developer.apple.com → Membership). CI passes it in instead.
     DEVELOPMENT_TEAM: ""
 targets:
-  Kacheri:
+  Beam:
     type: application
     platform: iOS
     sources:
-      - path: Kacheri
+      - path: Beam
     settings:
       base:
-        PRODUCT_NAME: Kacheri
+        PRODUCT_NAME: Beam
         # Same id as the Android app: the stores keep them apart.
         PRODUCT_BUNDLE_IDENTIFIER: in.co.nikolatesla.ridewave
-        INFOPLIST_FILE: Kacheri/Info.plist
+        INFOPLIST_FILE: Beam/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.0"

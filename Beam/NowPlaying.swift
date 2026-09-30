@@ -10,7 +10,7 @@ final class NowPlaying {
     /// What the page told us last: {active, playing, title, artist, art, prev, next, position, duration}.
     struct State {
         var active = false, playing = false, prev = false, next = false
-        var title = "Kacheri", artist = ""
+        var title = "Beam", artist = ""
         var art: String?
         var position = 0.0, duration = 0.0
 
@@ -23,7 +23,7 @@ final class NowPlaying {
             playing = o["playing"] as? Bool ?? false
             prev = o["prev"] as? Bool ?? false
             next = o["next"] as? Bool ?? false
-            title = o["title"] as? String ?? "Kacheri"
+            title = o["title"] as? String ?? "Beam"
             artist = o["artist"] as? String ?? ""
             art = o["art"] as? String
             position = (o["position"] as? NSNumber)?.doubleValue ?? 0
@@ -57,7 +57,7 @@ final class NowPlaying {
     }
 
     /// WebKit wipes the lock screen when the page's audio stops for a call or another app, and may
-    /// do it a moment after the page tells us what's on: put Kacheri back, now and once more later.
+    /// do it a moment after the page tells us what's on: put Beam back, now and once more later.
     func reassert() {
         apply()
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.apply() }
@@ -94,7 +94,7 @@ final class NowPlaying {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: state.title,
             MPMediaItemPropertyArtist: state.artist,
-            MPMediaItemPropertyAlbumTitle: "Kacheri",
+            MPMediaItemPropertyAlbumTitle: "Beam",
             MPNowPlayingInfoPropertyElapsedPlaybackTime: state.position,
             MPNowPlayingInfoPropertyPlaybackRate: state.playing ? 1.0 : 0.0,
         ]

@@ -1,6 +1,6 @@
-# Kacheri iOS
+# Beam iOS
 
-iPhone shell around the Kacheri web app (repo `D:\apps\ridewave`) at `https://kacheri.nikolatesla.co.in`.
+iPhone shell around the Beam web app (formerly Kacheri) (repo `D:\apps\ridewave`) at `https://beam.nikolatesla.co.in`.
 It is the iOS counterpart of `ridewave-android` and uses the same page bridge, plus what a web page can't do by itself:
 
 - **Plays in the background like a real music app.** `UIBackgroundModes: audio` and an
@@ -27,19 +27,19 @@ There's no Mac here, so builds run on GitHub's macOS runners (`.github/workflows
 2. Every push compiles for the simulator (unsigned). That checks the code builds.
 3. **Actions → iOS → Run workflow → testflight** archives, signs and uploads to TestFlight.
 
-On a Mac the steps are: `brew install xcodegen && xcodegen generate && open Kacheri.xcodeproj`.
+On a Mac the steps are: `brew install xcodegen && xcodegen generate && open Beam.xcodeproj`.
 Then set the team under Signing and run on a phone.
 
 ## One-time Apple setup (for TestFlight)
 
 1. Join the Apple Developer Program ($99/year).
-2. App Store Connect → Apps → **+** → new iOS app, bundle ID `in.co.nikolatesla.ridewave`, name "Kacheri".
+2. App Store Connect → Apps → **+** → new iOS app, bundle ID `in.co.nikolatesla.ridewave`, name "Beam".
 3. Users and Access → Integrations → App Store Connect API → generate a key with the **Admin** role.
    Admin lets the build create its distribution certificate and profile in the cloud.
 4. Add the repo secrets `APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8`
    (the .p8 file's contents).
 5. After the first upload, go to TestFlight → add testers by email, or turn on a public link.
-   Riders install the **TestFlight** app and then Kacheri from it. Each build expires after 90 days.
+   Riders install the **TestFlight** app and then Beam from it. Each build expires after 90 days.
 
 Bump `MARKETING_VERSION` in `project.yml` for each release. The build number is the CI run number.
 
